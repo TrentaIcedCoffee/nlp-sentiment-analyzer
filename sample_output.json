@@ -1,0 +1,48 @@
+{
+  "common_entities": [
+    {
+      "text": "burger",
+      "aws_score": 0.9999469985965185,
+      "gcp_score": 0.0,
+      "overall_sentiment": "Unsure"
+    },
+    {
+      "text": "coffee",
+      "aws_score": -0.9999829663929513,
+      "gcp_score": -0.3555555637971855,
+      "overall_sentiment": "Negative"
+    },
+    {
+      "text": "pizza",
+      "aws_score": 0.999783992767334,
+      "gcp_score": 0.4263157722362192,
+      "overall_sentiment": "Positive"
+    }
+  ],
+  "entities": [
+    {
+      "text": "I",
+      "aws_score": 0.0,
+      "gcp_score": null,
+      "overall_sentiment": null
+    },
+    {
+      "text": "burger",
+      "aws_score": 0.9999469985965185,
+      "gcp_score": 0.0,
+      "overall_sentiment": "Unsure"
+    },
+    {
+      "text": "coffee",
+      "aws_score": -0.9999829663929513,
+      "gcp_score": -0.3555555637971855,
+      "overall_sentiment": "Negative"
+    },
+    {
+      "text": "pizza",
+      "aws_score": 0.999783992767334,
+      "gcp_score": 0.4263157722362192,
+      "overall_sentiment": "Positive"
+    }
+  ]
+}
