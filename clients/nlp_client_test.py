@@ -1,55 +1,65 @@
 import unittest
-from clients.nlp_client import ConvertAwsComprehendResponse, ConvertGcpNlpResponse, MergeEntities
+from clients import nlp_client
 from google.cloud import language_v1
-from datatypes import aws_comprehend_types, gcp_nlp_types, nlp_client_types
+from datatypes import aws_types, gcp_types, nlp_client_types
 
 
 class MergeEntitiesTest(unittest.TestCase):
 
   def test_merge_empty_entity_lists_returns_empty(self):
     self.assertEqual(
-        MergeEntities(nlp_client_types.NlpEntities(entities=[]),
-                      nlp_client_types.NlpEntities(entities=[])),
+        nlp_client.MergeEntities([], []),
         nlp_client_types.MergedNlpEntities(entities=[], common_entities=[]))
 
   def test_merge_entities_with_same_text(self):
+    merged_entities = nlp_client.MergeEntities([
+        nlp_client_types.Entity(text="text_1",
+                                aws_score=0.1,
+                                gcp_score=None,
+                                overall_sentiment=None),
+        nlp_client_types.Entity(text="text_2",
+                                aws_score=0.2,
+                                gcp_score=None,
+                                overall_sentiment=None)
+    ], [
+        nlp_client_types.Entity(text="text_1",
+                                aws_score=None,
+                                gcp_score=0.3,
+                                overall_sentiment=None),
+        nlp_client_types.Entity(text="text_3",
+                                aws_score=None,
+                                gcp_score=0.4,
+                                overall_sentiment=None)
+    ])
     self.assertEqual(
-        MergeEntities(
-            nlp_client_types.NlpEntities(entities=[
-                nlp_client_types.NlpEntity(text="text_1", sentiment_score=0.1),
-                nlp_client_types.NlpEntity(text="text_2", sentiment_score=0.2)
-            ]),
-            nlp_client_types.NlpEntities(entities=[
-                nlp_client_types.NlpEntity(text="text_1", sentiment_score=0.3),
-                nlp_client_types.NlpEntity(text="text_3", sentiment_score=0.4)
-            ])),
-        nlp_client_types.MergedNlpEntities(entities=[
-            nlp_client_types.MergedNlpEntity(text="text_1",
-                                             aws_score=0.1,
-                                             gcp_score=0.3,
-                                             overall_sentiment=None),
-            nlp_client_types.MergedNlpEntity(text="text_2",
-                                             aws_score=0.2,
-                                             gcp_score=None,
-                                             overall_sentiment=None),
-            nlp_client_types.MergedNlpEntity(text="text_3",
-                                             aws_score=None,
-                                             gcp_score=0.4,
-                                             overall_sentiment=None)
-        ],
-                                           common_entities=[
-                                               nlp_client_types.MergedNlpEntity(
-                                                   text="text_1",
-                                                   aws_score=0.1,
-                                                   gcp_score=0.3,
-                                                   overall_sentiment=None)
-                                           ]))
+        merged_entities,
+        nlp_client_types.MergedNlpEntities(
+            common_entities=[
+                nlp_client_types.Entity(text="text_1",
+                                        aws_score=0.1,
+                                        gcp_score=0.3,
+                                        overall_sentiment=None)
+            ],
+            entities=[
+                nlp_client_types.Entity(text="text_1",
+                                        aws_score=0.1,
+                                        gcp_score=0.3,
+                                        overall_sentiment=None),
+                nlp_client_types.Entity(text="text_2",
+                                        aws_score=0.2,
+                                        gcp_score=None,
+                                        overall_sentiment=None),
+                nlp_client_types.Entity(text="text_3",
+                                        aws_score=None,
+                                        gcp_score=0.4,
+                                        overall_sentiment=None)
+            ]))
 
 
 class ParseApiResultTest(unittest.TestCase):
 
   def test_convert_aws_comprehend_response_expectedly(self):
-    entities = ConvertAwsComprehendResponse({
+    response = nlp_client.convert_aws_response({
         "Entities": [{
             "DescriptiveMentionIndex": [0],
             "Mentions": [{
@@ -107,79 +117,73 @@ class ParseApiResultTest(unittest.TestCase):
         }]
     })
 
-    expected_entities = aws_comprehend_types.Entities(entities=[
-        aws_comprehend_types.Entity(
-            text='I',
-            mentions=[
-                aws_comprehend_types.Mention(
-                    text='I',
-                    score=0.9999949932098389,
-                    group_score=1,
-                    sentiments=aws_comprehend_types.SentimentScore(
-                        positive=0,
-                        negative=0,
-                    )),
-            ]),
-        aws_comprehend_types.Entity(
+    expected_entities = [
+        aws_types.AwsEntity(text='I',
+                            mentions=[
+                                aws_types.Mention(
+                                    text='I',
+                                    score=0.9999949932098389,
+                                    group_score=1,
+                                    sentiments=aws_types.SentimentScore(
+                                        positive=0,
+                                        negative=0,
+                                    )),
+                            ]),
+        aws_types.AwsEntity(
             text='coffee',
             mentions=[
-                aws_comprehend_types.Mention(
-                    text='coffee',
-                    score=0.9999819993972778,
-                    group_score=0.999563992023468,
-                    sentiments=aws_comprehend_types.SentimentScore(
-                        positive=0.000003999999989900971,
-                        negative=0.9992110133171082,
-                    )),
-                aws_comprehend_types.Mention(
-                    text='coffee',
-                    score=0.9999650120735168,
-                    group_score=1,
-                    sentiments=aws_comprehend_types.SentimentScore(
-                        positive=0.9999989867210388,
-                        negative=0,
-                    )),
+                aws_types.Mention(text='coffee',
+                                  score=0.9999819993972778,
+                                  group_score=0.999563992023468,
+                                  sentiments=aws_types.SentimentScore(
+                                      positive=0.000003999999989900971,
+                                      negative=0.9992110133171082,
+                                  )),
+                aws_types.Mention(text='coffee',
+                                  score=0.9999650120735168,
+                                  group_score=1,
+                                  sentiments=aws_types.SentimentScore(
+                                      positive=0.9999989867210388,
+                                      negative=0,
+                                  )),
             ]),
-    ])
-    self.assertEqual(entities, expected_entities)
+    ]
+    self.assertEqual(response, expected_entities)
 
   def test_convert_gcp_nlp_api_response_expectedly(self):
-    response_json = '''
-      {
-        "entities": [
-          {
-            "name": "coffee",
-            "salience": 1,
-            "mentions": [
-              {
-                "text": {
-                  "content": "coffee",
-                  "begin_offset": 7
-                },
-                "sentiment": {
-                  "magnitude": 1,
-                  "score": 0
+    response = language_v1.AnalyzeEntitySentimentResponse.from_json('''
+        {
+            "entities": [
+            {
+                "name": "coffee",
+                "salience": 1,
+                "mentions": [
+                {
+                    "text": {
+                    "content": "coffee",
+                    "begin_offset": 7
+                    },
+                    "sentiment": {
+                    "magnitude": 1,
+                    "score": 0
+                    }
                 }
-              }
-            ],
-            "sentiment": {
-              "magnitude": 1,
-              "score": 0
+                ],
+                "sentiment": {
+                "magnitude": 1,
+                "score": 0
+                }
             }
-          }
-        ],
-        "language": "en"
-      }
-    '''
-    response = language_v1.AnalyzeEntitySentimentResponse.from_json(
-        response_json)
+            ],
+            "language": "en"
+        }
+        ''')
 
-    expected_entities = gcp_nlp_types.Entities(entities=[
-        gcp_nlp_types.Entity(name='coffee',
-                             salience=1,
-                             sentiment=gcp_nlp_types.Sentiment(
-                                 score=0,
-                                 magnitude=1,
-                             )),
+    self.assertAlmostEqual(nlp_client.convert_gcp_response(response), [
+        gcp_types.GcpEntity(name='coffee',
+                            salience=1,
+                            sentiment=gcp_types.Sentiment(
+                                score=0,
+                                magnitude=1,
+                            )),
     ])
-    self.assertAlmostEqual(ConvertGcpNlpResponse(response), expected_entities)

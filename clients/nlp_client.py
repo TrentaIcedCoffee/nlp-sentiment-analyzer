@@ -1,56 +1,55 @@
-from datatypes import gcp_nlp_types, aws_comprehend_types, nlp_client_types
+from datatypes import aws_types, gcp_types, nlp_client_types
 from google.cloud import language_v1
-from google.auth.credentials import Credentials
+from google.auth import credentials
 from botocore import session
-from normalization.normalizer import NormalizeGcpSentiment, NormalizeAwsSentiment
-from collections import defaultdict
+from normalization import normalizer
+import collections
 
 
-def ConvertAwsComprehendResponse(response) -> aws_comprehend_types.Entities:
-  entities = aws_comprehend_types.Entities(entities=[])
+def convert_aws_response(response) -> list[aws_types.AwsEntity]:
+  aws_entities = []
 
   for raw_entity in response.get('Entities', []):
-    entity = aws_comprehend_types.Entity(text='', mentions=[])
+    aws_entity = aws_types.AwsEntity(text='', mentions=[])
 
-    if 'DescriptiveMentionIndex' in raw_entity and len(
-        raw_entity['DescriptiveMentionIndex']) > 0:
+    if raw_entity.get('DescriptiveMentionIndex'):
       # Able to find a descriptive mention index best matching this entity group.
       description_index = raw_entity['DescriptiveMentionIndex'][0]
-      entity.text = raw_entity['Mentions'][description_index]['Text']
+      aws_entity.text = raw_entity['Mentions'][description_index]['Text']
 
     for raw_mention in raw_entity['Mentions']:
-      entity.mentions.append(
-          aws_comprehend_types.Mention(
-              text=raw_mention['Text'],
-              score=raw_mention['Score'],
-              group_score=raw_mention['GroupScore'],
-              sentiments=aws_comprehend_types.SentimentScore(
-                  positive=raw_mention['MentionSentiment']['SentimentScore']
-                  ['Positive'],
-                  negative=raw_mention['MentionSentiment']['SentimentScore']
-                  ['Negative'])))
+      aws_entity.mentions.append(
+          aws_types.Mention(text=raw_mention['Text'],
+                            score=raw_mention['Score'],
+                            group_score=raw_mention['GroupScore'],
+                            sentiments=aws_types.SentimentScore(
+                                positive=raw_mention['MentionSentiment']
+                                ['SentimentScore']['Positive'],
+                                negative=raw_mention['MentionSentiment']
+                                ['SentimentScore']['Negative'])))
 
-    entities.entities.append(entity)
+    aws_entities.append(aws_entity)
 
-  return entities
+  return aws_entities
 
 
-def ConvertGcpNlpResponse(
+def convert_gcp_response(
     response: language_v1.AnalyzeEntitySentimentResponse
-) -> gcp_nlp_types.Entities:
-  gcp_entities = gcp_nlp_types.Entities(entities=[])
-  for raw_entity in response.entities:
-    gcp_entities.entities.append(
-        gcp_nlp_types.Entity(name=raw_entity.name,
-                             salience=raw_entity.salience,
-                             sentiment=gcp_nlp_types.Sentiment(
-                                 score=raw_entity.sentiment.score,
-                                 magnitude=raw_entity.sentiment.magnitude)))
-  return gcp_entities
+) -> list[gcp_types.GcpEntity]:
+  return list(
+      map(
+          lambda raw_entity: gcp_types.GcpEntity(
+              name=raw_entity.name,
+              salience=raw_entity.salience,
+              sentiment=gcp_types.Sentiment(score=raw_entity.sentiment.score,
+                                            magnitude=raw_entity.sentiment.
+                                            magnitude)),
+          response.entities,
+      ))
 
 
 def ComputeSentimentInMergedEntity(
-    entity: nlp_client_types.MergedNlpEntity) -> nlp_client_types.Sentiment:
+    entity: nlp_client_types.Entity) -> nlp_client_types.Sentiment:
   ''' Returns a unanimous sentiment derived from ALL results of NLP sentiment analysis to the specified entity. 
   
     Positive: When all sentiments are positive.
@@ -70,38 +69,34 @@ def ComputeSentimentInMergedEntity(
   return nlp_client_types.Sentiment.Unsure
 
 
+# TODO: refactor here.
 def MergeEntities(
-    aws_entities: nlp_client_types.NlpEntities,
-    gcp_entities: nlp_client_types.NlpEntities
-) -> nlp_client_types.MergedNlpEntities:
+    aws_entities: list[nlp_client_types.Entity],
+    gcp_entities: list[nlp_client_types.Entity]
+) -> list[nlp_client_types.Entity]:
 
-  text_to_entitiy_sentiment = defaultdict(
-      lambda: nlp_client_types.MergedNlpEntity(
+  text_to_entitiy_sentiment = collections.defaultdict(
+      lambda: nlp_client_types.Entity(
           text=None, aws_score=None, gcp_score=None, overall_sentiment=None))
 
-  for aws_entity in aws_entities.entities:
+  for aws_entity in aws_entities:
     text_to_entitiy_sentiment[aws_entity.text].text = aws_entity.text
-    text_to_entitiy_sentiment[
-        aws_entity.text].aws_score = aws_entity.sentiment_score
-  for gcp_entity in gcp_entities.entities:
+    text_to_entitiy_sentiment[aws_entity.text].aws_score = aws_entity.aws_score
+  for gcp_entity in gcp_entities:
     text_to_entitiy_sentiment[gcp_entity.text].text = gcp_entity.text
-    text_to_entitiy_sentiment[
-        gcp_entity.text].gcp_score = gcp_entity.sentiment_score
+    text_to_entitiy_sentiment[gcp_entity.text].gcp_score = gcp_entity.gcp_score
 
-  merged_nlp_entities = nlp_client_types.MergedNlpEntities(
-      common_entities=[],
+  return nlp_client_types.MergedNlpEntities(
+      common_entities=[
+          text_to_entitiy_sentiment[text]
+          for text in sorted(text_to_entitiy_sentiment)
+          if text_to_entitiy_sentiment[text].gcp_score is not None and
+          text_to_entitiy_sentiment[text].aws_score is not None
+      ],
       entities=[
           text_to_entitiy_sentiment[text]
           for text in sorted(text_to_entitiy_sentiment)
       ])
-
-  # Find common entities occured in ALL NLP analysis tools.
-  merged_nlp_entities.common_entities = [
-      entity for entity in merged_nlp_entities.entities
-      if entity.gcp_score is not None and entity.aws_score is not None
-  ]
-
-  return merged_nlp_entities
 
 
 class NlpClient:
@@ -111,7 +106,8 @@ class NlpClient:
     self.gcp_nlp_client = gcp_nlp_client
 
   @classmethod
-  def NewNlpClient(cls, aws_credentials, gcp_credentials: Credentials):
+  def NewNlpClient(cls, aws_credentials,
+                   gcp_credentials: credentials.Credentials):
     return NlpClient(
         aws_comprehend_client=session.Session().create_client(
             'comprehend',
@@ -119,7 +115,8 @@ class NlpClient:
             aws_access_key_id=aws_credentials.access_key_id,
             aws_secret_access_key=aws_credentials.secret_access_key),
         gcp_nlp_client=language_v1.LanguageServiceClient(
-            credentials=gcp_credentials))
+            credentials=gcp_credentials),
+    )
 
   def AnalyzeSentiment(self, text: str) -> nlp_client_types.MergedNlpEntities:
     aws_response = self.aws_comprehend_client.detect_targeted_sentiment(
@@ -127,8 +124,8 @@ class NlpClient:
         ,
         LanguageCode='en'  # English (en) is the only supported language.
     )
-    aws_entities = NormalizeAwsSentiment(
-        ConvertAwsComprehendResponse(aws_response))
+    aws_entities = normalizer.NormalizeAwsSentiment(
+        convert_aws_response(aws_response))
 
     gcp_response = self.gcp_nlp_client.analyze_entity_sentiment(
         request={
@@ -139,7 +136,8 @@ class NlpClient:
             },
             "encoding_type": language_v1.EncodingType.UTF8
         })
-    gcp_entities = NormalizeGcpSentiment(ConvertGcpNlpResponse(gcp_response))
+    gcp_entities = normalizer.NormalizeGcpSentiment(
+        convert_gcp_response(gcp_response))
 
     merged_entities = MergeEntities(aws_entities, gcp_entities)
 
