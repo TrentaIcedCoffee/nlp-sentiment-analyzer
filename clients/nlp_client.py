@@ -107,7 +107,7 @@ class NlpClient:
 
   @classmethod
   def NewNlpClient(cls, aws_credentials,
-                   gcp_credentials: credentials.Credentials):
+                   gcp_credentials: credentials.Credentials | None):
     return NlpClient(
         aws_comprehend_client=session.Session().create_client(
             'comprehend',
